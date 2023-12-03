@@ -1,65 +1,104 @@
 import React from 'react';
 import styles from './App.module.css';
 import io from 'socket.io-client';
-const socket = io('http://localhost:3001');
+import axios from 'axios';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 
+const firebaseConfig = {
+  apiKey: 'AIzaSyC03y27TfLVZomwsU16K1a8JQTpovtYyR4',
+  authDomain: 'chatdb-860ce.firebaseapp.com',
+  databaseURL: 'https://chatdb-860ce-default-rtdb.firebaseio.com',
+  projectId: 'chatdb-860ce',
+  storageBucket: 'chatdb-860ce.appspot.com',
+  messagingSenderId: '1063378412727',
+  appId: '1:1063378412727:web:862418096c6110ad80d932',
+  measurementId: 'G-7CW2S0BSLQ',
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
+const socket = io('/');
 const App = () => {
   const [nome, setNome] = React.useState(null);
-  const [login, setLogin] = React.useState(null);
+  const [email, setEmail] = React.useState(null);
   const [senha, setSenha] = React.useState(null);
   const [logado, setLogado] = React.useState(false);
   const [mensagem, setMensagem] = React.useState(null);
   const [remetente, setRemetente] = React.useState(null);
+  const [session, setSession] = React.useState(null);
   const [mensagensRecebidas, setMensagensRecebidas] = React.useState([]);
   const [mensagensEnviadas, setMensagensEnviadas] = React.useState([]);
+
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+
   const cadastrar = async () => {
     try {
-      const response = await fetch('http://localhost:3000/clientes', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          nome,
-          login,
-          senha,
-        }),
-      });
-      if (response.ok) {
-        console.log('Cadastro bem-sucedido!');
-      } else {
-        console.error('Erro ao cadastrar:', response.statusText);
+      // Verificar se o email já existe no banco de dados
+      const verificarEmailResponse = await fetch(
+        'https://chatdb-860ce-default-rtdb.firebaseio.com/clientes.json',
+      );
+
+      if (!verificarEmailResponse.ok) {
+        throw new Error(`Erro HTTP! Status ${verificarEmailResponse.status}`);
       }
+
+      const clientes = await verificarEmailResponse.json();
+
+      const emailJaCadastrado = Object.values(clientes).some(
+        (cliente) => cliente.email === email,
+      );
+
+      if (emailJaCadastrado) {
+        alert('Este email já está cadastrado.');
+        return;
+      }
+
+      // Se o email não estiver cadastrado, proceder com o cadastro
+
+      const cadastrarResponse = await fetch(
+        `https://chatdb-860ce-default-rtdb.firebaseio.com/clientes/${nome}.json`,
+        {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({ nome, email, senha }),
+        },
+      );
+
+      if (!cadastrarResponse.ok) {
+        throw new Error(`Erro HTTP! Status ${cadastrarResponse.status}`);
+      }
+
+      const data = await cadastrarResponse.json();
+      alert('Cadastrado com sucesso');
+      console.log('Dados enviados com sucesso: ', data);
     } catch (error) {
-      console.error('Erro ao cadastrar:', error.message);
+      console.error('Erro durante o cadastro:', error.message);
     }
   };
 
   const logar = async () => {
     try {
-      if (!login || !senha) {
+      if (!email || !senha) {
         console.error('Insira um login e uma senha');
         return;
       }
 
-      const response = await fetch('http://localhost:3000/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          login,
-          senha,
-        }),
-      });
+      const response = await axios.get(
+        'https://chatdb-860ce-default-rtdb.firebaseio.com/clientes.json',
+      );
+      const clientes = response.data;
+      const credenciaisValidas = Object.values(clientes).some(
+        (cliente) => cliente.email === email && cliente.senha === senha,
+      );
 
-      if (response.ok) {
-        console.log('Login bem-sucedido!');
-        const socket = io('http://localhost:3001');
-        socket.emit('usuario_autenticado', { login });
+      if (credenciaisValidas) {
         setLogado(true);
       } else {
-        console.error('Erro ao fazer login:', response.statusText);
+        console.error('Credenciais inválidas');
       }
     } catch (error) {
       console.error('Erro ao fazer login:', error.message);
@@ -67,55 +106,31 @@ const App = () => {
   };
 
   const enviarMensagem = () => {
-    if (mensagem.trim() === '') {
-      console.error('Digite uma mensagem antes de enviar.');
-      return;
-    }
-    setMensagensEnviadas((mensagens) => [...mensagens, mensagem]);
-    socket.emit('enviar_mensagem', {
-      senderId: login,
-      receiverId: remetente,
-      conteudo: mensagem,
-      timestamp: new Date(),
-    });
-    setMensagem('');
-    console.log(mensagensEnviadas);
-    console.log('VERIFICANDO DADOS: ', login, remetente);
+    const senderId = email;
+    const receiverId = remetente;
+    const timestamp = new Date().toString();
+    const conteudo = mensagem;
+
+    axios
+      .post(
+        `https://chatdb-860ce-default-rtdb.firebaseio.com/mensagem.json`,
+        {
+          senderId,
+          receiverId,
+          conteudo,
+          timestamp,
+        },
+
+        { headers },
+      )
+      .then((response) => {
+        setSession(response.data.name);
+        console.log('Mensagem enviada com sucesso:');
+      })
+      .catch((error) => {
+        console.error('Erro ao enviar mensagem:', error);
+      });
   };
-  React.useEffect(() => {
-    const fetchMensagens = async () => {
-      try {
-        const mensagensResponse = await fetch(
-          `http://localhost:3000/mensagens/${login}`,
-        );
-        const mensagensData = await mensagensResponse.json();
-
-        if (mensagensData) {
-          setMensagensRecebidas(mensagensData);
-        } else {
-          console.warn(
-            'Mensagens recebidas não contêm propriedade "conteudo".',
-            mensagensData,
-          );
-        }
-      } catch (error) {
-        console.error('Erro ao obter mensagens:', error.message);
-      }
-    };
-
-    if (logado && login) {
-      fetchMensagens();
-    }
-  }, [logado, login]);
-  React.useEffect(() => {
-    socket.on('receber_mensagem', (mensagemRecebida) => {
-      setMensagensRecebidas((mensagens) => [...mensagens, mensagemRecebida]);
-    });
-
-    return () => {
-      socket.off('receber_mensagem');
-    };
-  }, [mensagem]);
 
   return (
     <div className={styles.globalContainer}>
@@ -131,13 +146,11 @@ const App = () => {
                 <p key={index}>{message.conteudo}</p>
               ))}
             </span>
-
             <label>
               Mensagem:
               <input
                 value={mensagem}
                 onChange={({ target }) => {
-                  console.log(mensagem);
                   setMensagem(target.value);
                 }}
                 type="text"
@@ -156,6 +169,7 @@ const App = () => {
             <span
               onClick={({ target }) => {
                 setLogado(false);
+                setSession(null);
                 setMensagensEnviadas([]);
               }}
               className={styles.deslogar}
@@ -180,8 +194,8 @@ const App = () => {
               <br />
               <input
                 required
-                value={login}
-                onChange={({ target }) => setLogin(target.value)}
+                value={email}
+                onChange={({ target }) => setEmail(target.value)}
                 type="text"
               />
             </label>
