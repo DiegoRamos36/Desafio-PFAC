@@ -1,6 +1,5 @@
 import React from 'react';
 import styles from './App.module.css';
-import io from 'socket.io-client';
 import axios from 'axios';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
@@ -18,8 +17,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-
-const socket = io('/');
 const App = () => {
   const [nome, setNome] = React.useState(null);
   const [email, setEmail] = React.useState(null);
